@@ -2,6 +2,7 @@
 
 import { createRequire } from "node:module";
 import { Command } from "commander";
+import { setBaseUrl } from "./client.js";
 import { newSession } from "./commands/new.js";
 import { write } from "./commands/write.js";
 import { read } from "./commands/read.js";
@@ -21,7 +22,8 @@ program
   .description("CLI client for Stage — a sandboxed React runtime for AI agents")
   .version(`stage ${version}`, "-v, --version")
   .option("--json", "Output as JSON")
-  .option("-q, --quiet", "Suppress output");
+  .option("-q, --quiet", "Suppress output")
+  .option("-u, --url <url>", "Stage server URL (default: $STAGE_URL or http://localhost:3000)");
 
 program
   .command("new")
@@ -100,6 +102,11 @@ program
     const root = cmd.optsWithGlobals();
     await onboard([], { json: root.json, quiet: root.quiet });
   });
+
+program.hook("preAction", (_thisCommand, actionCommand) => {
+  const root = actionCommand.optsWithGlobals();
+  if (root.url) setBaseUrl(root.url);
+});
 
 program.parseAsync(process.argv).catch((err) => {
   console.error("Fatal error:", err.message);

@@ -3,8 +3,14 @@
  * Talks to the Stage server over HTTP.
  */
 
+let _urlOverride: string | undefined;
+
+export function setBaseUrl(url: string): void {
+  _urlOverride = url;
+}
+
 export function getBaseUrl(): string {
-  return process.env.STAGE_URL || "http://localhost:3000";
+  return _urlOverride || process.env.STAGE_URL || "http://localhost:3000";
 }
 
 
