@@ -24,6 +24,7 @@ Stage renders React components live in the browser. No build step, no deploy.
 - Remote paths are absolute (e.g. /app/App.tsx)
 - Entry point must default-export a React component
 - Available libraries: React, shadcn/ui, recharts, lodash, papaparse
+- STAGE_URL env var controls which server to use (default: http://localhost:3000)
 </rules>
 </stage>
 `.trim();
