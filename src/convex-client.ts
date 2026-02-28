@@ -1,27 +1,72 @@
 /**
  * Convex client for Stage CLI.
- * Talks directly to Convex backend.
+ * Supports both Convex Cloud and self-hosted deployments.
+ * 
+ * Environment variables:
+ *   Convex Cloud:
+ *     CONVEX_URL - Deployment URL (e.g., https://xxx.convex.cloud)
+ *   
+ *   Self-hosted:
+ *     CONVEX_SELF_HOSTED_URL - Backend URL (e.g., http://127.0.0.1:3210)
+ *     CONVEX_SELF_HOSTED_ADMIN_KEY - Admin key for auth
  */
 
-import { ConvexHttpClient } from "convex/browser";
+interface ConvexConfig {
+  url: string;
+  adminKey?: string;
+  isSelfHosted: boolean;
+}
 
-let _client: ConvexHttpClient | null = null;
-let _urlOverride: string | undefined;
+let _configOverride: Partial<ConvexConfig> | null = null;
 
-export function setConvexUrl(url: string): void {
-  _urlOverride = url;
-  _client = null; // Reset client on URL change
+export function setConvexConfig(config: Partial<ConvexConfig>): void {
+  _configOverride = config;
+}
+
+export function getConvexConfig(): ConvexConfig {
+  // Check for overrides first
+  if (_configOverride?.url) {
+    return {
+      url: _configOverride.url,
+      adminKey: _configOverride.adminKey,
+      isSelfHosted: _configOverride.isSelfHosted ?? true,
+    };
+  }
+
+  // Check for Convex Cloud
+  const cloudUrl = process.env.CONVEX_URL;
+  if (cloudUrl) {
+    return {
+      url: cloudUrl,
+      isSelfHosted: false,
+    };
+  }
+
+  // Check for self-hosted
+  const selfHostedUrl = process.env.CONVEX_SELF_HOSTED_URL;
+  const selfHostedKey = process.env.CONVEX_SELF_HOSTED_ADMIN_KEY;
+  if (selfHostedUrl) {
+    return {
+      url: selfHostedUrl,
+      adminKey: selfHostedKey,
+      isSelfHosted: true,
+    };
+  }
+
+  // Default to local self-hosted
+  return {
+    url: "http://127.0.0.1:3210",
+    isSelfHosted: true,
+  };
 }
 
 export function getConvexUrl(): string {
-  return _urlOverride || process.env.CONVEX_URL || "http://127.0.0.1:3210";
+  return getConvexConfig().url;
 }
 
-function getClient(): ConvexHttpClient {
-  if (!_client) {
-    _client = new ConvexHttpClient(getConvexUrl());
-  }
-  return _client;
+// For backwards compatibility
+export function setConvexUrl(url: string): void {
+  setConvexConfig({ url, isSelfHosted: true });
 }
 
 interface ConvexResponse {
@@ -32,10 +77,21 @@ interface ConvexResponse {
 
 // Generic mutation/query helpers
 async function mutation(path: string, args: Record<string, unknown>): Promise<any> {
-  const url = `${getConvexUrl()}/api/mutation`;
+  const config = getConvexConfig();
+  const url = `${config.url}/api/mutation`;
+  
+  const headers: Record<string, string> = { 
+    "Content-Type": "application/json" 
+  };
+  
+  // Add admin key for self-hosted
+  if (config.isSelfHosted && config.adminKey) {
+    headers["Authorization"] = `Convex ${config.adminKey}`;
+  }
+
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({ path: `stage:${path}`, args }),
   });
   
@@ -52,10 +108,21 @@ async function mutation(path: string, args: Record<string, unknown>): Promise<an
 }
 
 async function query(path: string, args: Record<string, unknown>): Promise<any> {
-  const url = `${getConvexUrl()}/api/query`;
+  const config = getConvexConfig();
+  const url = `${config.url}/api/query`;
+  
+  const headers: Record<string, string> = { 
+    "Content-Type": "application/json" 
+  };
+  
+  // Add admin key for self-hosted
+  if (config.isSelfHosted && config.adminKey) {
+    headers["Authorization"] = `Convex ${config.adminKey}`;
+  }
+
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({ path: `stage:${path}`, args }),
   });
   
@@ -106,4 +173,14 @@ export async function getSnapshots(sessionId: string): Promise<Array<{ name?: st
 
 export async function getFileHistory(sessionId: string, path: string): Promise<Array<{ version?: number; createdAt?: number }>> {
   return await query("getFileHistory", { sessionId, path });
+}
+
+// Helper to show current config
+export function printConfig(): void {
+  const config = getConvexConfig();
+  console.log(`Mode: ${config.isSelfHosted ? "self-hosted" : "cloud"}`);
+  console.log(`URL: ${config.url}`);
+  if (config.isSelfHosted && config.adminKey) {
+    console.log(`Admin key: ${config.adminKey.slice(0, 20)}...`);
+  }
 }

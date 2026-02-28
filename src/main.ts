@@ -2,7 +2,7 @@
 
 import { createRequire } from "node:module";
 import { Command } from "commander";
-import { setConvexUrl } from "./convex-client.js";
+import { setConvexConfig, getConvexConfig, printConfig } from "./convex-client.js";
 import { newSession } from "./commands/new.js";
 import { write } from "./commands/write.js";
 import { read } from "./commands/read.js";
@@ -19,11 +19,26 @@ const program = new Command();
 
 program
   .name("stage")
-  .description("CLI client for Stage — a sandboxed React runtime for AI agents")
+  .description(`CLI client for Stage — a sandboxed React runtime for AI agents
+
+Environment variables:
+  CONVEX_URL                    Convex Cloud deployment URL
+  CONVEX_SELF_HOSTED_URL        Self-hosted Convex URL
+  CONVEX_SELF_HOSTED_ADMIN_KEY  Self-hosted admin key
+  STAGE_URL                     Stage frontend URL (for session links)`)
   .version(`stage ${version}`, "-v, --version")
   .option("--json", "Output as JSON")
   .option("-q, --quiet", "Suppress output")
-  .option("-u, --url <url>", "Convex URL (default: $CONVEX_URL or http://127.0.0.1:3210)");
+  .option("-u, --url <url>", "Convex URL (overrides env vars)")
+  .option("--self-hosted", "Force self-hosted mode")
+  .option("--cloud", "Force cloud mode");
+
+program
+  .command("config")
+  .description("Show current Convex configuration")
+  .action(() => {
+    printConfig();
+  });
 
 program
   .command("new")
@@ -53,7 +68,7 @@ program
 
 program
   .command("exec <command>")
-  .description("Run a bash command in Stage's virtual FS")
+  .description("[DEPRECATED] Not supported with Convex backend")
   .requiredOption("-s, --session <id>", "Session ID")
   .action(async (command, opts, cmd) => {
     const root = cmd.optsWithGlobals();
@@ -71,7 +86,7 @@ program
 
 program
   .command("ls [path]")
-  .description("List files in Stage's virtual FS")
+  .description("List files in session")
   .requiredOption("-s, --session <id>", "Session ID")
   .action(async (path, opts, cmd) => {
     const root = cmd.optsWithGlobals();
@@ -105,7 +120,20 @@ program
 
 program.hook("preAction", (_thisCommand, actionCommand) => {
   const root = actionCommand.optsWithGlobals();
-  if (root.url) setConvexUrl(root.url);
+  
+  // Configure Convex client based on flags
+  if (root.url) {
+    const isSelfHosted = root.selfHosted || (!root.cloud && !root.url.includes("convex.cloud"));
+    setConvexConfig({ 
+      url: root.url, 
+      isSelfHosted,
+      adminKey: process.env.CONVEX_SELF_HOSTED_ADMIN_KEY,
+    });
+  } else if (root.cloud) {
+    setConvexConfig({ isSelfHosted: false });
+  } else if (root.selfHosted) {
+    setConvexConfig({ isSelfHosted: true });
+  }
 });
 
 program.parseAsync(process.argv).catch((err) => {
