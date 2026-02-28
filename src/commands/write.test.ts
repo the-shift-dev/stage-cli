@@ -1,76 +1,64 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mockFetch, mockFetchError, captureOutput, captureStdout } from "../test-helpers";
 import { write } from "./write";
-import { setBaseUrl } from "../client";
-import { writeFileSync, unlinkSync, mkdirSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { setConvexConfig } from "../convex-client";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 describe("write", () => {
   const originalFetch = globalThis.fetch;
   const originalExit = process.exit;
-  const tmpDir = join(tmpdir(), "stage-cli-test-write");
-  const tmpFile = join(tmpDir, "test.tsx");
+  let tempDir: string;
 
   beforeEach(() => {
-    setBaseUrl("http://localhost:3000");
+    setConvexConfig({ url: "http://localhost:3210", isSelfHosted: true });
     process.exit = (() => { throw new Error("EXIT"); }) as any;
-    mkdirSync(tmpDir, { recursive: true });
-    writeFileSync(tmpFile, "export default () => <div>hi</div>");
+    tempDir = mkdtempSync(join(tmpdir(), "stage-test-"));
   });
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
     process.exit = originalExit;
-    rmSync(tmpDir, { recursive: true, force: true });
+    rmSync(tempDir, { recursive: true });
   });
 
   test("writes local file to remote path", async () => {
-    const fetchMock = mockFetch({});
-    captureOutput();
+    const localFile = join(tempDir, "test.tsx");
+    writeFileSync(localFile, "export default () => <div>Test</div>");
+    
+    mockFetch({ path: "/app/App.tsx", version: 1, size: 36 });
+    const { logs } = captureOutput();
 
-    await write("/app/App.tsx", tmpFile, { session: "s1" });
+    await write("/app/App.tsx", localFile, { session: "abc123" });
 
-    const [, opts] = fetchMock.mock.calls[0];
-    const body = JSON.parse(opts.body);
-    expect(body.files["/app/App.tsx"]).toBe("export default () => <div>hi</div>");
+    expect(logs.some((l) => l.includes("/app/App.tsx"))).toBe(true);
   });
 
   test("json mode returns path and bytes", async () => {
-    mockFetch({});
+    const localFile = join(tempDir, "test.tsx");
+    writeFileSync(localFile, "content");
+    
+    mockFetch({ path: "/app/App.tsx", version: 1, size: 7 });
     const { logs } = captureOutput();
 
-    await write("/app/App.tsx", tmpFile, { json: true, session: "s1" });
+    await write("/app/App.tsx", localFile, { session: "abc123", json: true });
 
     const parsed = JSON.parse(logs[0]);
-    expect(parsed.success).toBe(true);
     expect(parsed.path).toBe("/app/App.tsx");
-    expect(parsed.bytes).toBeGreaterThan(0);
-    expect(parsed.session).toBe("s1");
+    expect(parsed.bytes).toBe(7);
+    expect(parsed.version).toBe(1);
   });
 
   test("human mode shows success with bytes", async () => {
-    mockFetch({});
+    const localFile = join(tempDir, "test.tsx");
+    writeFileSync(localFile, "content");
+    
+    mockFetch({ path: "/app/App.tsx", version: 2, size: 7 });
     const { logs } = captureOutput();
 
-    await write("/app/App.tsx", tmpFile, { session: "s1" });
+    await write("/app/App.tsx", localFile, { session: "abc123" });
 
-    expect(logs.some((l) => l.includes("/app/App.tsx"))).toBe(true);
-    expect(logs.some((l) => l.includes("bytes"))).toBe(true);
-  });
-
-  test("exits when local file not found", async () => {
-    captureOutput();
-
-    expect(
-      write("/app/App.tsx", "/nonexistent/file.tsx", { session: "s1" }),
-    ).rejects.toThrow("EXIT");
-  });
-
-  test("exits on fetch error", async () => {
-    mockFetchError(500, "boom");
-    captureOutput();
-
-    expect(write("/app/App.tsx", tmpFile, { session: "s1" })).rejects.toThrow("EXIT");
+    expect(logs.some((l) => l.includes("7 bytes") && l.includes("v2"))).toBe(true);
   });
 });

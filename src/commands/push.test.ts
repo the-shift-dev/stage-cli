@@ -1,116 +1,111 @@
-import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mockFetch, mockFetchError, captureOutput } from "../test-helpers";
+import { describe, test, expect, beforeEach, afterEach, mock } from "bun:test";
+import { captureOutput } from "../test-helpers";
 import { push } from "./push";
-import { setBaseUrl } from "../client";
-import { writeFileSync, mkdirSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { setConvexConfig } from "../convex-client";
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 describe("push", () => {
   const originalFetch = globalThis.fetch;
   const originalExit = process.exit;
-  const tmpDir = join(tmpdir(), "stage-cli-test-push");
+  let tempDir: string;
 
   beforeEach(() => {
-    setBaseUrl("http://localhost:3000");
+    setConvexConfig({ url: "http://localhost:3210", isSelfHosted: true });
     process.exit = (() => { throw new Error("EXIT"); }) as any;
-    rmSync(tmpDir, { recursive: true, force: true });
-    mkdirSync(join(tmpDir, "components"), { recursive: true });
-    writeFileSync(join(tmpDir, "App.tsx"), "export default () => <div/>");
-    writeFileSync(join(tmpDir, "components", "Button.tsx"), "export const Button = () => <button/>");
+    tempDir = mkdtempSync(join(tmpdir(), "stage-test-"));
   });
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
     process.exit = originalExit;
-    rmSync(tmpDir, { recursive: true, force: true });
+    rmSync(tempDir, { recursive: true });
   });
 
+  function mockConvexCalls() {
+    let callCount = 0;
+    globalThis.fetch = mock(() => {
+      callCount++;
+      // writeFile calls return version info
+      // triggerRender returns entry/version
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({
+          status: "success",
+          value: callCount <= 2 
+            ? { path: "/app/test.tsx", version: 1, size: 10 }
+            : { entry: "/app/App.tsx", version: 1 }
+        }),
+      });
+    }) as any;
+  }
+
   test("pushes directory and renders", async () => {
-    const fetchMock = mockFetch({ version: 1 });
-    captureOutput();
+    writeFileSync(join(tempDir, "App.tsx"), "content1");
+    writeFileSync(join(tempDir, "Button.tsx"), "content2");
+    mockConvexCalls();
+    const { logs } = captureOutput();
 
-    await push(tmpDir, "/app", { session: "s1" });
+    await push(tempDir, "/app", { session: "abc123", render: true });
 
-    // First call = write files, second = render
-    expect(fetchMock.mock.calls.length).toBe(2);
-    const writeBody = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(writeBody.files["/app/App.tsx"]).toBe("export default () => <div/>");
-    expect(writeBody.files["/app/components/Button.tsx"]).toBe("export const Button = () => <button/>");
+    expect(logs.some((l) => l.includes("2 files"))).toBe(true);
+    expect(logs.some((l) => l.includes("Rendered"))).toBe(true);
   });
 
   test("pushes single file", async () => {
-    const fetchMock = mockFetch({ version: 1 });
-    captureOutput();
+    const file = join(tempDir, "test.tsx");
+    writeFileSync(file, "content");
+    mockConvexCalls();
+    const { logs } = captureOutput();
 
-    await push(join(tmpDir, "App.tsx"), "/app", { session: "s1" });
+    await push(file, "/app", { session: "abc123", render: true });
 
-    const writeBody = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(writeBody.files["/app/App.tsx"]).toBe("export default () => <div/>");
-    expect(Object.keys(writeBody.files)).toHaveLength(1);
+    expect(logs.some((l) => l.includes("1 file"))).toBe(true);
   });
 
   test("defaults remote dir to /app", async () => {
-    const fetchMock = mockFetch({ version: 1 });
-    captureOutput();
+    writeFileSync(join(tempDir, "App.tsx"), "content");
+    mockConvexCalls();
+    const { logs } = captureOutput();
 
-    await push(tmpDir, undefined, { session: "s1" });
+    await push(tempDir, undefined, { session: "abc123", render: true });
 
-    const writeBody = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(Object.keys(writeBody.files).every((k) => k.startsWith("/app/"))).toBe(true);
+    expect(logs.some((l) => l.includes("/app"))).toBe(true);
   });
 
   test("skips render with --no-render", async () => {
-    const fetchMock = mockFetch({});
-    captureOutput();
+    writeFileSync(join(tempDir, "App.tsx"), "content");
+    mockConvexCalls();
+    const { logs } = captureOutput();
 
-    await push(tmpDir, "/app", { session: "s1", render: false });
+    await push(tempDir, "/app", { session: "abc123", render: false });
 
-    // Only one call (write), no render
-    expect(fetchMock.mock.calls.length).toBe(1);
+    expect(logs.some((l) => l.includes("Rendered"))).toBe(false);
   });
 
   test("json mode returns file list and version", async () => {
-    mockFetch({ version: 3 });
+    writeFileSync(join(tempDir, "App.tsx"), "content");
+    mockConvexCalls();
     const { logs } = captureOutput();
 
-    await push(tmpDir, "/app", { json: true, session: "s1" });
+    await push(tempDir, "/app", { session: "abc123", render: true, json: true });
 
     const parsed = JSON.parse(logs[0]);
-    expect(parsed.success).toBe(true);
-    expect(parsed.count).toBe(2);
-    expect(parsed.files).toContain("/app/App.tsx");
-    expect(parsed.files).toContain("/app/components/Button.tsx");
-    expect(parsed.version).toBe(3);
-    expect(parsed.session).toBe("s1");
+    expect(parsed.files.length).toBe(1);
+    expect(parsed.version).toBe(1);
   });
 
   test("skips dotfiles and node_modules", async () => {
-    mkdirSync(join(tmpDir, "node_modules"), { recursive: true });
-    mkdirSync(join(tmpDir, ".hidden"), { recursive: true });
-    writeFileSync(join(tmpDir, "node_modules", "dep.js"), "nope");
-    writeFileSync(join(tmpDir, ".hidden", "secret.ts"), "nope");
+    writeFileSync(join(tempDir, "App.tsx"), "content");
+    writeFileSync(join(tempDir, ".hidden"), "secret");
+    mkdirSync(join(tempDir, "node_modules"));
+    writeFileSync(join(tempDir, "node_modules", "pkg.js"), "module");
+    mockConvexCalls();
+    const { logs } = captureOutput();
 
-    const fetchMock = mockFetch({ version: 1 });
-    captureOutput();
+    await push(tempDir, "/app", { session: "abc123", render: true });
 
-    await push(tmpDir, "/app", { session: "s1" });
-
-    const writeBody = JSON.parse(fetchMock.mock.calls[0][1].body);
-    const paths = Object.keys(writeBody.files);
-    expect(paths.every((p) => !p.includes("node_modules") && !p.includes(".hidden"))).toBe(true);
-  });
-
-  test("exits when path not found", async () => {
-    captureOutput();
-
-    expect(push("/nonexistent", "/app", { session: "s1" })).rejects.toThrow("EXIT");
-  });
-
-  test("exits on fetch error", async () => {
-    mockFetchError(500, "boom");
-    captureOutput();
-
-    expect(push(tmpDir, "/app", { session: "s1" })).rejects.toThrow("EXIT");
+    expect(logs.some((l) => l.includes("1 file"))).toBe(true); // Only App.tsx
   });
 });

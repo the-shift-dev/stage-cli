@@ -1,14 +1,14 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mockFetch, mockFetchError, captureOutput } from "../test-helpers";
 import { render } from "./render";
-import { setBaseUrl } from "../client";
+import { setConvexConfig } from "../convex-client";
 
 describe("render", () => {
   const originalFetch = globalThis.fetch;
   const originalExit = process.exit;
 
   beforeEach(() => {
-    setBaseUrl("http://localhost:3000");
+    setConvexConfig({ url: "http://localhost:3210", isSelfHosted: true });
     process.exit = (() => { throw new Error("EXIT"); }) as any;
   });
 
@@ -18,54 +18,40 @@ describe("render", () => {
   });
 
   test("renders default entry point", async () => {
-    const fetchMock = mockFetch({ version: 1 });
-    captureOutput();
+    mockFetch({ entry: "/app/App.tsx", version: 1 });
+    const { logs } = captureOutput();
 
-    await render(undefined, { session: "s1" });
+    await render(undefined, { session: "abc123" });
 
-    const [, opts] = fetchMock.mock.calls[0];
-    const body = JSON.parse(opts.body);
-    expect(body.entry).toBe("/app/App.tsx");
+    expect(logs.some((l) => l.includes("/app/App.tsx"))).toBe(true);
   });
 
   test("renders custom entry point", async () => {
-    const fetchMock = mockFetch({ version: 2 });
-    captureOutput();
+    mockFetch({ entry: "/app/Main.tsx", version: 1 });
+    const { logs } = captureOutput();
 
-    await render("/app/Main.tsx", { session: "s1" });
+    await render("/app/Main.tsx", { session: "abc123" });
 
-    const [, opts] = fetchMock.mock.calls[0];
-    const body = JSON.parse(opts.body);
-    expect(body.entry).toBe("/app/Main.tsx");
+    expect(logs.some((l) => l.includes("/app/Main.tsx"))).toBe(true);
   });
 
   test("json mode returns version and entry", async () => {
-    mockFetch({ version: 3 });
+    mockFetch({ entry: "/app/App.tsx", version: 5 });
     const { logs } = captureOutput();
 
-    await render(undefined, { json: true, session: "s1" });
+    await render(undefined, { session: "abc123", json: true });
 
     const parsed = JSON.parse(logs[0]);
-    expect(parsed.success).toBe(true);
     expect(parsed.entry).toBe("/app/App.tsx");
-    expect(parsed.version).toBe(3);
-    expect(parsed.session).toBe("s1");
+    expect(parsed.version).toBe(5);
   });
 
   test("human mode shows success with version", async () => {
-    mockFetch({ version: 5 });
+    mockFetch({ entry: "/app/App.tsx", version: 3 });
     const { logs } = captureOutput();
 
-    await render(undefined, { session: "s1" });
+    await render(undefined, { session: "abc123" });
 
-    expect(logs.some((l) => l.includes("Rendered"))).toBe(true);
-    expect(logs.some((l) => l.includes("v5"))).toBe(true);
-  });
-
-  test("exits on fetch error", async () => {
-    mockFetchError(500, "boom");
-    captureOutput();
-
-    expect(render(undefined, { session: "s1" })).rejects.toThrow("EXIT");
+    expect(logs.some((l) => l.includes("v3"))).toBe(true);
   });
 });

@@ -1,14 +1,14 @@
 import { mock, spyOn } from "bun:test";
 
 /**
- * Mock fetch to return a successful JSON response.
+ * Mock fetch to return a Convex-style response.
  */
-export function mockFetch(response: any = {}) {
+export function mockFetch(value: any = {}) {
   const fetchMock = mock(() =>
     Promise.resolve({
       ok: true,
-      json: () => Promise.resolve(response),
-      text: () => Promise.resolve(JSON.stringify(response)),
+      json: () => Promise.resolve({ status: "success", value }),
+      text: () => Promise.resolve(JSON.stringify({ status: "success", value })),
     }),
   );
   globalThis.fetch = fetchMock as any;
@@ -16,9 +16,24 @@ export function mockFetch(response: any = {}) {
 }
 
 /**
- * Mock fetch to return an error response.
+ * Mock fetch to return a Convex-style error response.
  */
-export function mockFetchError(status: number, body: string) {
+export function mockFetchError(status: number, errorMessage: string) {
+  const fetchMock = mock(() =>
+    Promise.resolve({
+      ok: true, // Convex returns 200 with error in body
+      json: () => Promise.resolve({ status: "error", errorMessage }),
+      text: () => Promise.resolve(JSON.stringify({ status: "error", errorMessage })),
+    }),
+  );
+  globalThis.fetch = fetchMock as any;
+  return fetchMock;
+}
+
+/**
+ * Mock fetch to return HTTP error (not Convex error).
+ */
+export function mockHttpError(status: number, body: string) {
   const fetchMock = mock(() =>
     Promise.resolve({
       ok: false,
