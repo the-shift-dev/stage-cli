@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { stagePost } from "../client.js";
+import { writeFile } from "../convex-client.js";
 import type { OutputOptions } from "../utils/output.js";
 import { error, output, success } from "../utils/output.js";
 import { EXIT_ERROR, EXIT_USER_ERROR } from "../utils/exit-codes.js";
@@ -31,12 +31,12 @@ export async function write(
   }
 
   try {
-    await stagePost("/api/stage/files", { files: { [remotePath]: content } }, sessionId);
+    const result = await writeFile(sessionId, remotePath, content);
 
     output(options, {
-      json: () => ({ success: true, path: remotePath, bytes: content.length, session: sessionId }),
+      json: () => ({ success: true, path: remotePath, bytes: content.length, version: result.version, session: sessionId }),
       quiet: () => {},
-      human: () => success(`${remotePath} (${content.length} bytes)`),
+      human: () => success(`${remotePath} (${content.length} bytes, v${result.version})`),
     });
   } catch (e: any) {
     error(e.message);

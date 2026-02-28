@@ -2,7 +2,7 @@
 
 import { createRequire } from "node:module";
 import { Command } from "commander";
-import { setBaseUrl } from "./client.js";
+import { setConvexUrl } from "./convex-client.js";
 import { newSession } from "./commands/new.js";
 import { write } from "./commands/write.js";
 import { read } from "./commands/read.js";
@@ -23,7 +23,7 @@ program
   .version(`stage ${version}`, "-v, --version")
   .option("--json", "Output as JSON")
   .option("-q, --quiet", "Suppress output")
-  .option("-u, --url <url>", "Stage server URL (default: $STAGE_URL or http://localhost:3000)");
+  .option("-u, --url <url>", "Convex URL (default: $CONVEX_URL or http://127.0.0.1:3210)");
 
 program
   .command("new")
@@ -105,7 +105,7 @@ program
 
 program.hook("preAction", (_thisCommand, actionCommand) => {
   const root = actionCommand.optsWithGlobals();
-  if (root.url) setBaseUrl(root.url);
+  if (root.url) setConvexUrl(root.url);
 });
 
 program.parseAsync(process.argv).catch((err) => {

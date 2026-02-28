@@ -1,6 +1,6 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, posix } from "node:path";
-import { stagePost } from "../client.js";
+import { writeFile, triggerRender } from "../convex-client.js";
 import type { OutputOptions } from "../utils/output.js";
 import { error, output, success, dim, bullet } from "../utils/output.js";
 import { EXIT_ERROR, EXIT_USER_ERROR } from "../utils/exit-codes.js";
@@ -55,16 +55,18 @@ export async function push(
   }
 
   try {
-    await stagePost("/api/stage/files", { files }, sessionId);
+    // Write all files to Convex
+    const paths = Object.keys(files);
+    for (const remotePath of paths) {
+      await writeFile(sessionId, remotePath, files[remotePath]);
+    }
 
     let version: number | undefined;
     if (options.render !== false) {
       const entry = options.entry || `${targetDir}/App.tsx`;
-      const renderResult = await stagePost("/api/stage/render", { entry }, sessionId);
+      const renderResult = await triggerRender(sessionId, entry);
       version = renderResult.version;
     }
-
-    const paths = Object.keys(files);
 
     output(options, {
       json: () => ({

@@ -1,20 +1,22 @@
-import { getBaseUrl, stagePost } from "../client.js";
+import { createSession, getConvexUrl } from "../convex-client.js";
 import type { OutputOptions } from "../utils/output.js";
-import { error, output, success, hint, cmd, dim } from "../utils/output.js";
+import { error, output, success, hint } from "../utils/output.js";
 import { EXIT_ERROR } from "../utils/exit-codes.js";
 
 export async function newSession(
   options: OutputOptions,
 ): Promise<void> {
   try {
-    const result = await stagePost("/api/stage/sessions", {});
-    const url = `${getBaseUrl()}/s/${result.id}`;
+    const sessionId = await createSession();
+    // Derive Stage UI URL from Convex URL (default localhost:3000)
+    const stageUrl = process.env.STAGE_URL || "http://localhost:3000";
+    const url = `${stageUrl}/s/${sessionId}`;
 
     output(options, {
-      json: () => ({ id: result.id, url }),
-      quiet: () => process.stdout.write(result.id),
+      json: () => ({ id: sessionId, url }),
+      quiet: () => process.stdout.write(sessionId),
       human: () => {
-        success(`Session created: ${result.id}`);
+        success(`Session created: ${sessionId}`);
         hint(`URL: ${url}`);
       },
     });

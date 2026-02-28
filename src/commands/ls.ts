@@ -1,4 +1,4 @@
-import { stagePost } from "../client.js";
+import { getAllFiles } from "../convex-client.js";
 import type { OutputOptions } from "../utils/output.js";
 import { error, output } from "../utils/output.js";
 import { EXIT_ERROR } from "../utils/exit-codes.js";
@@ -11,26 +11,25 @@ export async function ls(
   const dir = remotePath || "/app";
 
   try {
-    const result = await stagePost(
-      "/api/stage/exec",
-      { command: `find ${dir} -type f 2>/dev/null | sort` },
-      sessionId,
-    );
-
-    const files = (result.stdout || "").trim();
-    const list = files ? files.split("\n") : [];
+    const files = await getAllFiles(sessionId);
+    
+    // Filter by directory if specified
+    const filtered = files
+      .filter(f => f.path.startsWith(dir))
+      .map(f => f.path)
+      .sort();
 
     output(options, {
-      json: () => ({ path: dir, files: list, count: list.length, session: sessionId }),
+      json: () => ({ path: dir, files: filtered, count: filtered.length, session: sessionId }),
       quiet: () => {
-        if (files) process.stdout.write(files + "\n");
+        if (filtered.length) process.stdout.write(filtered.join("\n") + "\n");
       },
       human: () => {
-        if (!list.length) {
+        if (!filtered.length) {
           console.log("(empty)");
           return;
         }
-        for (const f of list) {
+        for (const f of filtered) {
           console.log(f);
         }
       },

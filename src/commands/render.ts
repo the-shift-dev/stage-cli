@@ -1,4 +1,4 @@
-import { stagePost } from "../client.js";
+import { triggerRender } from "../convex-client.js";
 import type { OutputOptions } from "../utils/output.js";
 import { error, output, success, dim } from "../utils/output.js";
 import { EXIT_ERROR } from "../utils/exit-codes.js";
@@ -11,18 +11,18 @@ export async function render(
   const entryPoint = entry || "/app/App.tsx";
 
   try {
-    const result = await stagePost("/api/stage/render", { entry: entryPoint }, sessionId);
+    const result = await triggerRender(sessionId, entryPoint);
 
     output(options, {
       json: () => ({
         success: true,
-        entry: entryPoint,
+        entry: result.entry,
         version: result.version,
         session: sessionId,
       }),
       quiet: () => {},
       human: () =>
-        success(`Rendered ${entryPoint} ${dim(`(v${result.version})`)}`),
+        success(`Rendered ${result.entry} ${dim(`(v${result.version})`)}`),
     });
   } catch (e: any) {
     error(e.message);
