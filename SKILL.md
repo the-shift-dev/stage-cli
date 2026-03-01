@@ -1,229 +1,277 @@
 ---
 name: stage
-description: Render React components in a sandboxed browser runtime. Use when you need to create, preview, or iterate on React UIs that the user can see in their browser. Stage handles the rendering — you just write the component code. Works with shadcn/ui, recharts, lucide icons, and Tailwind. Supports multi-file apps with imports between files.
+description: Build and deploy React applications to a sandboxed browser runtime. Use when the user wants to build an application — dashboards, forms, visualizations, prototypes, or any interactive UI. Stage handles rendering; you write the components. Supports shadcn/ui, recharts, lucide icons, Tailwind, and multi-file apps with real-time data via Convex.
 ---
 
 # stage
 
-Stage is a sandboxed React runtime for AI agents. Write React components, push them to Stage, and they render live in the browser with real-time updates.
+Stage is a sandboxed React runtime for AI agents. Write React components, push them to Stage, and they render live in the browser. Changes sync instantly via WebSocket.
 
-## Installation
+## When to Use
 
-```bash
-npm install -g stage-ai
-```
+Use Stage when the user wants to **build an application**:
+- Dashboards and data visualizations
+- Forms and interactive UIs
+- Prototypes and demos
+- Any React-based application
 
 ## Quick Start
 
 ```bash
-# Create a new session
-stage new
-# → Session created: abc123
-# → URL: https://stage.example.com/s/abc123
+# 1. Create a session (this IS the app — save this ID)
+SESSION=$(stage new --quiet)
 
-# Write a component
-stage write /app/App.tsx ./my-component.tsx -s abc123
+# 2. Write your component
+stage write /app/App.tsx ./App.tsx -s $SESSION
 
-# Render it
-stage render -s abc123
+# 3. Render it
+stage render -s $SESSION
 
-# Open the URL in browser — component is live
+# 4. Share the URL with the user
+echo "View your app: $(stage new --json | jq -r .url)"
+```
+
+## Session = App
+
+**One session per application.** The session ID is the app's identity.
+
+- Create session once at the start
+- Reuse the same session ID for all commands
+- Session persists across conversation turns
+- Share the session URL with the user — it's their app
+
+```bash
+# Save session at start
+SESSION=$(stage new --quiet)
+
+# Use it for everything
+stage write /app/App.tsx ./code.tsx -s $SESSION
+stage status -s $SESSION
+stage push ./app -s $SESSION
 ```
 
 ## Commands
 
-### `stage new`
-Create a new session. Returns session ID and URL.
+| Command | Description |
+|---------|-------------|
+| `stage new` | Create new session, returns ID and URL |
+| `stage write <path> <file> -s ID` | Write a file to session |
+| `stage push <dir> -s ID` | Push directory and render |
+| `stage render -s ID` | Trigger render |
+| `stage status -s ID` | Check status and errors |
+| `stage ls -s ID` | List files |
+| `stage read <path> -s ID` | Read file contents |
 
-```bash
-stage new
-stage new --json  # Returns { id, url, convexUrl, mode }
+### Output Modes
+
+All commands support:
+- `--json` — Structured JSON output for parsing
+- `--quiet` — Minimal output (just IDs/values)
+- Default — Human-readable with colors
+
+## Component Requirements
+
+### Entry Point
+
+The entry point (default `/app/App.tsx`) must **default-export a React component**:
+
+```tsx
+// ✅ Correct
+export default function App() {
+  return <div>Hello</div>;
+}
+
+// ✅ Also correct
+const App = () => <div>Hello</div>;
+export default App;
+
+// ❌ Wrong — no default export
+export function App() { ... }
+
+// ❌ Wrong — not a component
+export default "hello";
 ```
 
-### `stage write <remote-path> [local-file] -s <session>`
-Write a file to the session. Reads from local file or stdin.
+### TypeScript/JSX
 
-```bash
-# From file
-stage write /app/App.tsx ./App.tsx -s abc123
-
-# From stdin
-echo 'export default () => <h1>Hello</h1>' | stage write /app/App.tsx - -s abc123
-
-# Returns version number
-stage write /app/App.tsx ./App.tsx -s abc123 --json
-# → { path, version, size }
-```
-
-### `stage render [entry] -s <session>`
-Trigger rendering. Default entry point is `/app/App.tsx`.
-
-```bash
-stage render -s abc123
-stage render /app/Main.tsx -s abc123  # Custom entry point
-```
-
-### `stage push <local-dir> [remote-dir] -s <session>`
-Push entire directory and render. Best for multi-file apps.
-
-```bash
-stage push ./my-app /app -s abc123
-stage push ./my-app /app -s abc123 --no-render  # Push without rendering
-stage push ./my-app /app -s abc123 -e /app/Main.tsx  # Custom entry
-```
-
-### `stage ls [path] -s <session>`
-List files in session.
-
-```bash
-stage ls -s abc123
-stage ls /app -s abc123
-```
-
-### `stage read <path> -s <session>`
-Read file contents.
-
-```bash
-stage read /app/App.tsx -s abc123
-```
-
-### `stage config`
-Show current Convex configuration.
-
-```bash
-stage config
-# → Mode: cloud
-# → URL: https://xxx.convex.cloud
-```
-
-## Environment Variables
-
-```bash
-# Convex Cloud (recommended)
-export CONVEX_URL=https://your-deployment.convex.cloud
-
-# Self-hosted Convex
-export CONVEX_SELF_HOSTED_URL=http://localhost:3210
-export CONVEX_SELF_HOSTED_ADMIN_KEY=your-key
-
-# Stage frontend URL (for session links)
-export STAGE_URL=https://your-stage.vercel.app
-```
+Full TypeScript and JSX support. No build step needed — Stage compiles on the fly.
 
 ## Available Libraries
 
-Components have access to:
-- **React** — `import { useState, useEffect } from 'react'`
-- **shadcn/ui** — `import { Button, Card, ... } from '@/components/ui/button'`
-- **lucide-react** — `import { Icon } from 'lucide-react'`
-- **recharts** — `import { LineChart, BarChart, ... } from 'recharts'`
-- **lodash** — `import _ from 'lodash'`
-- **papaparse** — `import Papa from 'papaparse'`
-- **Tailwind CSS** — All utility classes available
+### React
+```tsx
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+```
 
-### shadcn/ui Components
+### shadcn/ui (All Components)
+```tsx
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+// ... all shadcn/ui components available
+```
 
-All components available: Accordion, Alert, AlertDialog, Avatar, Badge, Breadcrumb, Button, Calendar, Card, Carousel, Checkbox, Collapsible, Command, ContextMenu, Dialog, Drawer, DropdownMenu, Form, HoverCard, Input, Label, Menubar, NavigationMenu, Popover, Progress, RadioGroup, Resizable, ScrollArea, Select, Separator, Sheet, Skeleton, Slider, Switch, Table, Tabs, Textarea, Toggle, ToggleGroup, Tooltip.
+**Available:** Accordion, Alert, AlertDialog, AspectRatio, Avatar, Badge, Breadcrumb, Button, Calendar, Card, Carousel, Checkbox, Collapsible, Command, ContextMenu, Dialog, Drawer, DropdownMenu, Form, HoverCard, Input, Label, Menubar, NavigationMenu, Popover, Progress, RadioGroup, Resizable, ScrollArea, Select, Separator, Sheet, Skeleton, Slider, Switch, Table, Tabs, Textarea, Toggle, ToggleGroup, Tooltip.
+
+### Recharts
+```tsx
+import { LineChart, Line, BarChart, Bar, PieChart, Pie, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+```
+
+### Lucide Icons
+```tsx
+import { Home, Settings, User, ChevronRight, Loader2 } from 'lucide-react';
+```
+
+### Utilities
+```tsx
+import _ from 'lodash';
+import Papa from 'papaparse';
+```
+
+### Tailwind CSS
+All Tailwind utility classes available. Dark mode supported.
+
+## What's NOT Available
+
+- ❌ `fetch()` to external APIs
+- ❌ Node.js APIs (fs, path, etc.)
+- ❌ npm packages beyond the allowlist
+- ❌ External script loading
 
 ## Multi-File Apps
 
 Stage supports importing between session files:
 
-```tsx
-// /app/Button.tsx
-import { Button } from '@/components/ui/button';
-export function MyButton({ label }) {
-  return <Button>{label}</Button>;
-}
+```
+/app/
+  App.tsx        # Entry point
+  Button.tsx     # import { MyButton } from './Button'
+  utils.ts       # import { formatDate } from './utils'
+  types.ts       # import type { User } from './types'
+```
 
-// /app/App.tsx
+### Import Syntax
+
+```tsx
+// Relative imports (recommended)
 import { MyButton } from './Button';
-export default function App() {
-  return <MyButton label="Click me" />;
-}
+import { formatDate } from './utils';
+
+// Absolute paths also work
+import { MyButton } from '/app/Button';
 ```
 
-Push both files:
+### Push Directory
+
 ```bash
-stage write /app/Button.tsx ./Button.tsx -s abc123
-stage write /app/App.tsx ./App.tsx -s abc123
-stage render -s abc123
+# Push entire directory at once
+stage push ./my-app /app -s $SESSION
+
+# Custom entry point
+stage push ./my-app /app -s $SESSION -e /app/Main.tsx
 ```
 
-Or push directory:
-```bash
-stage push ./my-app /app -s abc123
-```
+## Live Data (@stage/convex)
 
-## Live Data (Convex)
-
-Components can access real-time data:
+Components can access real-time persistent data via Convex:
 
 ```tsx
-import { liveData, messages, sendMessage, setLiveData } from '@stage/convex';
+import { liveData, setLiveData, messages, sendMessage } from '@stage/convex';
 
 export default function App() {
   return (
-    <div>
+    <div className="p-8">
+      {/* liveData is reactive — updates in real-time */}
       <p>Count: {liveData?.count || 0}</p>
+      
       <button onClick={() => setLiveData({ count: (liveData?.count || 0) + 1 })}>
         Increment
       </button>
-      <ul>
-        {messages?.map((m, i) => <li key={i}>{m.text}</li>)}
-      </ul>
+
+      {/* Messages list */}
+      <div className="mt-4">
+        {messages?.map((msg, i) => (
+          <div key={i}>
+            <strong>{msg.sender}:</strong> {msg.text}
+          </div>
+        ))}
+      </div>
+
+      <button onClick={() => sendMessage('Hello!', 'User')}>
+        Send Message
+      </button>
     </div>
   );
 }
 ```
 
-Update data from CLI:
-```bash
-# Set live data
-curl -X POST "$CONVEX_URL/api/mutation" \
-  -H "Content-Type: application/json" \
-  -d '{"path":"stage:setLiveData","args":{"sessionId":"abc123","data":{"count":42}}}'
+### Live Data API
 
-# Send message
-curl -X POST "$CONVEX_URL/api/mutation" \
-  -H "Content-Type: application/json" \
-  -d '{"path":"stage:sendMessage","args":{"sessionId":"abc123","text":"Hello!","sender":"Bot"}}'
+| Export | Type | Description |
+|--------|------|-------------|
+| `liveData` | `any` | Current live data (reactive) |
+| `setLiveData(data)` | `(data: any) => Promise` | Replace live data |
+| `messages` | `Message[]` | All messages (reactive) |
+| `sendMessage(text, sender)` | `(text: string, sender: string) => Promise` | Add message |
+
+### Use Cases
+
+- Real-time counters and state
+- Chat/messaging interfaces
+- Collaborative features
+- Agent-to-app communication
+
+## Error Handling
+
+### Check Status
+
+```bash
+stage status -s $SESSION
 ```
 
-## Workflow for Agents
+Output shows:
+- Current render state (OK or Error)
+- Entry point and version
+- Error message if any
+- File list
 
-1. **Create session once** at the start of a task
-2. **Write files** as you develop
-3. **Render** to see changes
-4. **Iterate** — changes are instant via WebSocket
+### Error Workflow
+
+1. Push code
+2. If user reports error OR check `stage status`
+3. Read the error message
+4. Fix the code
+5. Push again
 
 ```bash
-# Session persists — reuse it
-SESSION=$(stage new --quiet)
-echo "Working in session: $SESSION"
+# Check for errors
+stage status -s $SESSION --json | jq -r '.render.error // "ok"'
 
-# Develop iteratively
-stage write /app/App.tsx ./v1.tsx -s $SESSION
-stage render -s $SESSION
-# User reviews...
+# If error, read the code
+stage read /app/App.tsx -s $SESSION
 
-stage write /app/App.tsx ./v2.tsx -s $SESSION
+# Fix and re-push
+stage write /app/App.tsx ./fixed.tsx -s $SESSION
 stage render -s $SESSION
-# Instant update in browser
 ```
 
-## Rules for Agents
+### Common Errors
 
-1. **Always use `--json`** when parsing output programmatically
-2. **Always pass `-s <session>`** on every command
-3. **Entry point must default-export a React component**
-4. **Use relative imports** (`./Button`) for multi-file apps
-5. **Session URLs are shareable** — user can open them anytime
-6. **Data persists** — sessions survive restarts (stored in Convex)
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `ReferenceError: X is not defined` | Using undefined variable | Define or import it |
+| `Security violations` | Using disallowed import | Use allowed imports only |
+| `X is not a function` | Wrong export or import | Check export/import syntax |
+| `Cannot read property of undefined` | Accessing missing data | Add null checks |
 
-## Example: Dashboard
+## Complete Example
+
+### Dashboard App
 
 ```tsx
+// /app/App.tsx
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer } from 'recharts';
@@ -234,7 +282,6 @@ const data = [
   { month: 'Feb', value: 300 },
   { month: 'Mar', value: 600 },
   { month: 'Apr', value: 800 },
-  { month: 'May', value: 500 },
 ];
 
 export default function Dashboard() {
@@ -251,28 +298,6 @@ export default function Dashboard() {
           <CardContent>
             <div className="text-2xl font-bold text-white">$45,231</div>
             <Badge className="bg-green-500/20 text-green-400">+20.1%</Badge>
-          </CardContent>
-        </Card>
-        
-        <Card className="bg-slate-800 border-slate-700">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm text-slate-400">Users</CardTitle>
-            <Users className="h-4 w-4 text-blue-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-white">2,350</div>
-            <Badge className="bg-blue-500/20 text-blue-400">+180</Badge>
-          </CardContent>
-        </Card>
-        
-        <Card className="bg-slate-800 border-slate-700">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm text-slate-400">Growth</CardTitle>
-            <TrendingUp className="h-4 w-4 text-purple-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-white">+12.5%</div>
-            <Badge className="bg-purple-500/20 text-purple-400">On track</Badge>
           </CardContent>
         </Card>
       </div>
@@ -297,6 +322,29 @@ export default function Dashboard() {
 ```
 
 ```bash
-stage write /app/App.tsx ./dashboard.tsx -s abc123
-stage render -s abc123
+stage write /app/App.tsx ./dashboard.tsx -s $SESSION
+stage render -s $SESSION
+```
+
+## Rules for Agents
+
+1. **Create session once** — save the ID, reuse it
+2. **Session = App** — one session per application
+3. **Always use `-s <session>`** on every command
+4. **Use `--json`** when parsing output
+5. **Check `stage status`** if something seems wrong
+6. **Entry must default-export** a React component
+7. **Use relative imports** (`./Button`) for multi-file
+8. **Fix errors by reading, fixing, pushing** — iterate fast
+
+## Environment Setup
+
+```bash
+# Convex Cloud (production)
+export CONVEX_URL=https://your-deployment.convex.cloud
+export STAGE_URL=https://your-stage.vercel.app
+
+# Self-hosted
+export CONVEX_SELF_HOSTED_URL=http://localhost:3210
+export STAGE_URL=http://localhost:3000
 ```
