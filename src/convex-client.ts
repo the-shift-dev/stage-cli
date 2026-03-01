@@ -163,6 +163,28 @@ export async function getRenderState(sessionId: string): Promise<{ entry: string
   return await query("getRenderState", { sessionId });
 }
 
+export interface SessionStatus {
+  session: {
+    createdAt: number;
+    lastAccessedAt: number;
+  } | null;
+  render: {
+    entry: string;
+    version: number;
+    error: string | null;
+    renderedAt: number | null;
+  } | null;
+  files: Array<{
+    path: string;
+    version: number;
+    size: number;
+  }>;
+}
+
+export async function getStatus(sessionId: string): Promise<SessionStatus> {
+  return await query("getStatus", { sessionId });
+}
+
 export async function createSnapshot(sessionId: string, name?: string): Promise<string> {
   return await mutation("createSnapshot", { sessionId, name });
 }

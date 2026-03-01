@@ -11,6 +11,7 @@ import { render } from "./commands/render.js";
 import { ls } from "./commands/ls.js";
 import { push } from "./commands/push.js";
 import { onboard } from "./commands/onboard.js";
+import { status } from "./commands/status.js";
 
 const require = createRequire(import.meta.url);
 const { version } = require("../package.json");
@@ -82,6 +83,15 @@ program
   .action(async (entry, opts, cmd) => {
     const root = cmd.optsWithGlobals();
     await render(entry, { json: root.json, quiet: root.quiet, session: opts.session });
+  });
+
+program
+  .command("status")
+  .description("Get session status including render state and errors")
+  .requiredOption("-s, --session <id>", "Session ID")
+  .action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    await status([], { json: root.json, quiet: root.quiet, session: opts.session });
   });
 
 program
