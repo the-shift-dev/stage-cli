@@ -1,6 +1,6 @@
-# Compiled binaries
-stage
-stage-*
+# Compiled binaries (in root only)
+/stage
+/stage-*
 
 # Logs
 *.log
